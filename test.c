@@ -81,6 +81,9 @@ void homeState(void) {
     return;
 }
 
+
+
+
 void configUART(void) {
     PINSEL_CFG_Type UART_pins_config;
     UART_pins_config.Portnum = 0;
@@ -305,6 +308,44 @@ void servo_write(uint8_t servo_number, float value)
         break;
     }
     LPC_PWM1->LER = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
+
+    return;
+}
+
+
+// Codigo que lee una parte de memoria y la manda por DMA al DAC para reproducir una señal de audio
+// Necesito crear el .py que genere el codigo. Ademas declarar un buffer de 1024 bytes que tenga la señal de audio de una cancion (Tengo que observar el formato de la señal de audio)
+void confDMA(void){
+    DMA_InitTypeDef DMA_InitStruct;
+    DMA_InitStruct.DMA_Channel = 0;
+    DMA_InitStruct.DMA_DestAddr = (uint32_t) &(LPC_DAC->DACR);
+    DMA_InitStruct.DMA_SrcAddr = (uint32_t) & (buffer);
+
+    return;
+}
+
+// Configuracion de EINT0 para controlar los modos
+void confEINT0(void){
+
+    // En este codigo tengo que configurar el EINT0 para que cuando se presione el boton de la placa, se cambie el modo de funcionamiento del robot 
+    // de mmanual a automatico y viceversa.
+
+    return;
+}
+
+void confEINT1(void){
+
+    // En este codigo tengo que configurar el EINT1 para que cuando se presione el boton de la placa, se ejecute el movimiento del robot y se mande la señal de audio por DMA al DAC
+
+    return;
+}
+
+void EINT0_IRQHandler(void){
+
+    // En este codigo tengo que configurar el EINT0 para que cuando se presione el boton de la placa, se cambie el modo de funcionamiento del robot 
+    // de manual a automatico y viceversa. Con una variable global puedo saber en que modo esta el robot, si esta en cero es manual, si esta en uno es automatico.
+    // Modo manual: se mueve el robot con los potenciometros y el ADC esta activo. DMA e EINT1 desactivados.
+    // Modo automatico: se mueve el robot con la activacion de EINT1 y el DMA esta activo. 
 
     return;
 }
