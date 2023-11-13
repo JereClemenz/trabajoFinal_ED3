@@ -65,6 +65,10 @@ uint32_t pwmCount6;
 #define SINE_FREQ_IN_HZ 50
 #define PCLK_DAC_IN_MHZ 25 // PCLK_DAC = 25 MHz by default
 
+// Variables for EINT 
+uint8_t modo = 0; // 0 -> manual, 1 -> automatico
+
+
 int main(void)
 {
     configPin();
@@ -323,21 +327,46 @@ void servo_write(uint8_t servo_number, float value)
 
 
 
-// Configuracion de EINT0 para controlar los modos
-void confEINT0(void){
+// COnfiguracion de EINT0 y EINT1.
+/*
+    1. Configurar pines. (ACORDARSE que son normalmenta abierto los pulsadores. Flanco de bajada detecta pulsacion. Los pulsadores estan conectados a tierra)
+    2. Configurar interrupciones. (EINT0 y EINT1)
+    3. Iniciar EINT0. EINT1 solo para modo automatico. (Control mediante handler)
 
-    // En este codigo tengo que configurar el EINT0 para que cuando se presione el boton de la placa, se cambie el modo de funcionamiento del robot 
-    // de mmanual a automatico y viceversa.
+*/
+void confEINT(void){
+    
+    // Pin configuration EINT0 -> P2.10 y EINT1 -> P2.11
+    PINSEL_CFG_Type PinCfg;
+    PinCfg.Portnum = 2;
+    PinCfg.Pinnum = 10;
+    PinCfg.Funcnum = 1;
+    PinCfg.Pinmode = PINSEL_PINMODE_PULLUP;
+    PinCfg.OpenDrain = PINSEL_PINMODE_NORMAL;
+    PINSEL_ConfigPin(&PinCfg);
+
+    PinCfg.Pinnum = 11;
+    PINSEL_ConfigPin(&PinCfg);
+    
+    // For EINT0
+    EXTI_Init();
+    EXTI_SetMode(EXTI_EINT0,EXTI_MODE_EDGE_SENSITIVE);
+    EXTI_SetPolarity(EXTI_EINT0,EXTI_POLARITY_LOW_ACTIVE_OR_FALLING_EDGE);
+    EXTI_ClearEXTIFlag(EXTI_EINT0);
+
+    // For EINT1
+    EXTI_SetMode(EXTI_EINT1,EXTI_MODE_EDGE_SENSITIVE);
+    EXTI_SetPolarity(EXTI_EINT1,EXTI_POLARITY_LOW_ACTIVE_OR_FALLING_EDGE);
+    EXTI_ClearEXTIFlag(EXTI_EINT1);
+    
+    // Configuraciones iniciales
+    modo = 0; // Modo manual
+    NVIC_EnableIRQ(EINT0_IRQn);
 
     return;
 }
 
-void confEINT1(void){
 
-    // En este codigo tengo que configurar el EINT1 para que cuando se presione el boton de la placa, se ejecute el movimiento del robot y se mande la señal de audio por DMA al DAC
-
-    return;
-}
 
 void EINT0_IRQHandler(void){
 
@@ -346,9 +375,93 @@ void EINT0_IRQHandler(void){
     // Modo manual: se mueve el robot con los potenciometros y el ADC esta activo. DMA e EINT1 desactivados.
     // Modo automatico: se mueve el robot con la activacion de EINT1 y el DMA esta activo. 
 
+    if(modo == 0){
+        modo = 1;
+        homeState(); // Vuelvo al home state del robot para ejecutar un movimiento preseleccionado 
+        NVIC_DisableIRQ(ADC_IRQn);
+        NVIC_EnableIRQ(EINT1_IRQn);
+    }
+    else{
+        modo = 0;
+        NVIC_EnableIRQ(ADC_IRQn);
+        NVIC_DisableIRQ(EINT1_IRQn);
+    }
+    
+
     return;
 }
 
+void EINT1_IRQHandler(void){
+    // En este Handler tiene que ejecutar un movimiento preseleccionado y mandar 
+    // por DMA al DAC una señal de audio durante el tiempo que dure el movimiento.
+    
+    // Enable GPDMA CH0
+    GPDMA_ChannelCmd(0,ENABLE); 
+
+    // Home State del Robot
+    homeState();
+
+    // Movimiento para agarrar el objeto
+    LPC_PWM1 -> MR1 = 1850;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR2 = 1850;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR3 = 2500;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR4 = 1600;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR5 = 1220;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR6 = 1800;
+    updatePWM();
+    delay();
+
+    // Movimiento para levantar el objeto y llevarlo a la posicion deseada
+    LPC_PWM1 -> MR1 = 1850;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR2 = 1850;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR3 = 2500;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR4 = 1600;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR5 = 1220;
+    updatePWM();
+    delay();
+    LPC_PWM1 -> MR6 = 1800;
+    updatePWM();
+    delay();
+
+    // Vuelta al home state
+    homeState();
+
+    // Deshabilito GPDMA CH0
+    GPDMA_ChannelCmd(0,DISABLE);
+    return;
+}
+
+
+// Function that updates the new value for MRx registers
+void updatePWM(void){
+    LPC_PWM1->LER = (1 << 1) | (1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
+    return;
+}
+
+// Delay que dura 1 segundo aproximadamente. Llamo la funcion por cada movimiento 
+// automatico que haga el robot
+void delay(void){
+    for(int i=0;i<1000000;i++);
+    return;
+}
 
 /*
     1. confSignal: armado de la señal senoidal
