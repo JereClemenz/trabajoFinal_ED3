@@ -1,6 +1,7 @@
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_gpdma.h"
 #include "lpc17xx_adc.h"
+#include "lpc17xx_dac.h"
 #include "lpc17xx_pwm.h"
 #include "lpc17xx.h"
 #include "lpc17xx_clkpwr.h"
@@ -56,6 +57,13 @@ uint32_t pwmCount3;
 uint32_t pwmCount4;
 uint32_t pwmCount5;
 uint32_t pwmCount6;
+
+
+// Values for DMA
+#define DMA_SIZE 60
+#define NUM_SINE_SAMPLE 60
+#define SINE_FREQ_IN_HZ 50
+#define PCLK_DAC_IN_MHZ 25 // PCLK_DAC = 25 MHz by default
 
 int main(void)
 {
@@ -313,16 +321,7 @@ void servo_write(uint8_t servo_number, float value)
 }
 
 
-// Codigo que lee una parte de memoria y la manda por DMA al DAC para reproducir una señal de audio
-// Necesito crear el .py que genere el codigo. Ademas declarar un buffer de 1024 bytes que tenga la señal de audio de una cancion (Tengo que observar el formato de la señal de audio)
-void confDMA(void){
-    DMA_InitTypeDef DMA_InitStruct;
-    DMA_InitStruct.DMA_Channel = 0;
-    DMA_InitStruct.DMA_DestAddr = (uint32_t) &(LPC_DAC->DACR);
-    DMA_InitStruct.DMA_SrcAddr = (uint32_t) & (buffer);
 
-    return;
-}
 
 // Configuracion de EINT0 para controlar los modos
 void confEINT0(void){
@@ -346,6 +345,159 @@ void EINT0_IRQHandler(void){
     // de manual a automatico y viceversa. Con una variable global puedo saber en que modo esta el robot, si esta en cero es manual, si esta en uno es automatico.
     // Modo manual: se mueve el robot con los potenciometros y el ADC esta activo. DMA e EINT1 desactivados.
     // Modo automatico: se mueve el robot con la activacion de EINT1 y el DMA esta activo. 
+
+    return;
+}
+
+
+/*
+    1. confSignal: armado de la señal senoidal
+    2. confDac: configuracion de pin AOUT e inicializacion de DAC
+    3. confDMA: configuracion de DMA
+    4. habilitar interrupcion de DMA, channel 0
+*/
+
+// Codigo que lee una parte de memoria y la manda por DMA al DAC para reproducir una señal de audio
+void confDMA(void){
+    
+    // Lista de DMA
+	GPDMA_LLI_Type DMA_LLI_Struct; 
+
+    /*
+        dac_sine_lut ubicacion de datos
+        destination DACR
+        next LLI is the same
+    */
+	DMA_LLI_Struct.SrcAddr= (uint32_t)dac_sine_lut;  
+	DMA_LLI_Struct.DstAddr= (uint32_t)&(LPC_DAC->DACR); 
+	DMA_LLI_Struct.NextLLI= (uint32_t)&DMA_LLI_Struct;
+
+	// Control register
+    /*
+        Souce width 32 bit
+        destination width 32 bit
+        source increment (1 word)
+    */
+	DMA_LLI_Struct.Control= DMA_SIZE
+			| (2<<18) 
+			| (2<<21) 
+			| (1<<26) 
+			;
+	
+    // GPDMA block section
+    GPDMA_Init(); // Inicialize GPDMA controller
+
+    /*
+        channel 0
+        source memory: dac_sine_lut
+        destination memory: unused because it is a M2P transfer
+        transfer size: DMA_SIZE (60 samples)    
+        transfer type: M2P (memory to peripheral)
+        source connection: unused because it is a M2P transfer
+        destination connection: DAC
+        linker list item: DMA_LLI_Struct
+    */
+
+    GPDMA_Channel_CFG_Type GPDMACfg;
+	GPDMACfg.ChannelNum = 0;
+	GPDMACfg.SrcMemAddr = (uint32_t)(dac_sine_lut);
+	GPDMACfg.DstMemAddr = 0;
+	GPDMACfg.TransferSize = DMA_SIZE;
+	GPDMACfg.TransferWidth = 0;
+	GPDMACfg.TransferType = GPDMA_TRANSFERTYPE_M2P;
+	GPDMACfg.SrcConn = 0;
+	GPDMACfg.DstConn = GPDMA_CONN_DAC;
+	GPDMACfg.DMALLI = (uint32_t)&DMA_LLI_Struct;
+	// Setup channel with given parameter
+	GPDMA_Setup(&GPDMACfg);
+	return;
+
+}
+
+//Configuracion de pin AOUT e inicializacion de DAC
+void confDac(void){
+
+    // P0.26 as AOUT
+	PINSEL_CFG_Type PinCfg;
+	PinCfg.Funcnum = 2;
+	PinCfg.OpenDrain = 0;
+	PinCfg.Pinmode = 0;
+	PinCfg.Pinnum = 26;
+	PinCfg.Portnum = 0;
+	PINSEL_ConfigPin(&PinCfg);
+
+
+    // DAC configuration structure
+    /*
+        enable counter
+        enable DMA
+    */
+	DAC_CONVERTER_CFG_Type DAC_ConverterConfigStruct;
+	DAC_ConverterConfigStruct.CNT_ENA =SET; 
+	DAC_ConverterConfigStruct.DMA_ENA = SET; 
+
+    // Initialize DAC. Sampling frequency = 1MHz (1uS)
+    DAC_Init(LPC_DAC); 
+
+    // Set time out for DAC
+    /*
+        PCLK_DAC_IN_MHZ = 25
+        SINE_FREQ_IN_HZ = 50
+        NUM_SINE_SAMPLE = 60
+        tmp = 25*1000000/(50*60) = 8333 is the value that is loaded into the DMA timer. In seconds, 8333*1e-6 = 0.008333 = 8.333 ms
+    */
+
+    uint32_t tmp;
+	tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ*NUM_SINE_SAMPLE); 
+	
+    /*
+        first function: Set reload value for interrupt/DMA counter
+        second function: To enable the DMA operation and control DMA timer
+    */
+    DAC_SetDMATimeOut(LPC_DAC,tmp); 
+	DAC_ConfigDAConverterControl(LPC_DAC, &DAC_ConverterConfigStruct); 
+
+	
+    return;
+}
+
+// Armado de la señal senoidal 
+void confSignal(void){
+    uint32_t dac_sine_lut[NUM_SINE_SAMPLE];
+
+    // quarter wave values ​​where zero volts are 0 and 3.3 V is 1023. Start in 512 to 1023
+	uint32_t sin_0_to_90_16_samples[16]={\
+			0,1045,2079,3090,4067,\
+			5000,5877,6691,7431,8090,\
+			8660,9135,9510,9781,9945,10000\
+    };
+
+    // Armado de la LUT
+    /*
+        i = 0 to 15: first quarter of the sine wave
+        i = 16 to 30: second quarter of the sine wave
+        i = 31 to 45: third quarter of the sine wave
+        i = 46 to 60: fourth quarter of the sine wave
+    */
+    for(i=0;i<NUM_SINE_SAMPLE;i++)
+	{
+		if(i<=15){
+			dac_sine_lut[i] = 512 + 512*sin_0_to_90_16_samples[i]/10000;
+			if(i==15) dac_sine_lut[i]= 1023;
+		}
+		else if(i<=30){
+			dac_sine_lut[i] = 512 + 512*sin_0_to_90_16_samples[30-i]/10000;
+		}
+		else if(i<=45){
+			dac_sine_lut[i] = 512 - 512*sin_0_to_90_16_samples[i-30]/10000;
+		}
+		else{
+			dac_sine_lut[i] = 512 - 512*sin_0_to_90_16_samples[60-i]/10000;
+		}
+
+		// rotate 6 bits to the left to match the DAC format
+		dac_sine_lut[i] = (dac_sine_lut[i]<<6);
+	}
 
     return;
 }
