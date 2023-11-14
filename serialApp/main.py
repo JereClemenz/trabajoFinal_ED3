@@ -1,5 +1,6 @@
 from tkinter import *
 import serial.tools.list_ports
+import threading
 
 def connectMenuInit():
     global root, connectButton, refreshButton
@@ -14,10 +15,10 @@ def connectMenuInit():
     portBaudRate = Label(root, text="Baud rate:", bg="white")
     portBaudRate.grid(column=1, row=3, padx=10, pady=10)   
 
-    refreshButton = Button(root, text="Actualizar", height=1, width=8, command=updateSerialPorts)
+    refreshButton = Button(root, text="Actualizar", height=1, width=10, command=updateSerialPorts)
     refreshButton.grid(column=3, row=2)
 
-    connectButton = Button(root, text="Conectar", height=1, width=8, state="disabled", command=connection)
+    connectButton = Button(root, text="Conectar", height=1, width=10, state="disabled", command=connection)
     connectButton.grid(column=3, row=3)
     baudRateSelect()
     updateSerialPorts()
@@ -58,13 +59,27 @@ def updateSerialPorts():
     dropCom.grid(column=2, row=2, padx=50)
     connectCheck(0)
 
+def readSerial():
+    global serialData
+    while serialData:
+        data = ser.readline()
+        if len(data)>0:
+            try:
+                info = (data.decode('utf8'))
+                print(info)
+            except:
+                pass
+
 def connection():
+    global ser, serialData
     if connectButton["text"] in "Desconectar":
+        serialData = False
         connectButton["text"] = "Conectar"
         refreshButton["state"] = "active"
         dropBaudRate["state"] = "active"
         dropBaudRate["state"] = "active"
     else:
+        serialData = True
         connectButton["text"] = "Desconectar"
         refreshButton["state"] = "disable"
         dropBaudRate["state"] = "disable"
@@ -74,12 +89,15 @@ def connection():
         #print(port,baud)
         try:
             ser = serial.Serial(port,baud,timeout=0)
+            print("Se pudo crear el objeto puerto serie")
         except:
             print("error con serial")
+            pass
+        t1 = threading.Thread(target=readSerial)
+        t1.daemon = True
+        t1.start()
 
 
 connectMenuInit()
 
 root.mainloop()
-
-#9600, 19200, 38400, and 115200
