@@ -11,11 +11,11 @@
 
 /*
  *     	ADC: medimos 6 potenciometros y un sensor de distancia
-        DAC: señal de audio variable en frecuencia
-        DMA: transferencia de datos M2P a DAC de la señal de audio
-        Timers: interrupción para largar conversión ADC
-        PWM: servomotores (5)
-        Hw de comunicación: Ethernet
+ *       DAC: señal de audio variable en frecuencia
+ *      DMA: transferencia de datos M2P a DAC de la señal de audio
+ *       Timers: interrupción para largar conversión ADC
+ *       PWM: servomotores (5)
+ *       Hw de comunicación: UART
  */
 
 /*
@@ -25,24 +25,28 @@
  */
 
 /*
-    EINT0 - controlamos modos
-   Modo 0 controlado manualmente
-   Modo 1 mediante EINT1 ejecuta el movimiento y por DMA manda al DAC una señal de audio por 10 seg
-
+  *  EINT0 - controlamos modos
+  *  Modo 0 controlado manualmente
+  *  Modo 1 mediante EINT1 ejecuta el movimiento y por DMA manda al DAC una señal de audio por 10 seg
+  *  Configuracion de LED RGB para indicar el modo. P0.7, P0.8 y P0.9
+  *           - R -> Modo 0
+  *           - G -> Modo 1
+  *           - B -> Modo 1 en ejecucion
 */
 
-/*
-    FALTA MODO 1 y probar MODO 0
-
-*/
 
 void configPin(void);
 void configPWM(void);
 void configADC(void);
 void configUART(void);
-void servo_write(uint8_t servo_number, float value);
-void configEINT0(void);
 void homeState(void);
+
+void confEINT(void);
+void updatePWM(void);
+void delay(void);
+void confDMA(void);
+void confDac(void);
+void confSignal(void);
 
 // Variables globales para ver las conversiones de ADC
 uint32_t AD0Value = 0;
@@ -62,8 +66,10 @@ uint32_t pwmCount6;
 // Values for DMA
 #define DMA_SIZE 60
 #define NUM_SINE_SAMPLE 60
-#define SINE_FREQ_IN_HZ 50
 #define PCLK_DAC_IN_MHZ 25 // PCLK_DAC = 25 MHz by default
+#define SINE_FREQ_IN_HZ_1 4000 // 4 kHz
+#define SINE_FREQ_IN_HZ_2 5000 // 5 kHz
+
 
 // Variables for EINT 
 uint8_t modo = 0; // 0 -> manual, 1 -> automatico
@@ -201,6 +207,12 @@ void configADC(void)
 
     // ADC interrupt configuration
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
+    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
+    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
+    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
+    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
+    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
+    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN1, ENABLE);
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN2, ENABLE);
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN4, ENABLE);
@@ -291,38 +303,6 @@ void ADC_IRQHandler(void)
     return;
 }
 
-void servo_write(uint8_t servo_number, float value)
-{
-    // Conversion volt a PWM
-    float constante = 303.03;
-    uint32_t convertido = (uint32_t)(value * constante + 1000);
-    switch (servo_number)
-    {
-    case 1:
-        LPC_PWM1->MR1 = convertido;
-        break;
-    case 2:
-        LPC_PWM1->MR2 = convertido;
-        break;
-    case 3:
-        LPC_PWM1->MR3 = convertido;
-        break;
-    case 4:
-        LPC_PWM1->MR4 = convertido;
-        break;
-    case 5:
-        LPC_PWM1->MR5 = convertido;
-        break;
-    case 6:
-        LPC_PWM1->MR6 = convertido;
-        break;
-    default:
-        break;
-    }
-    LPC_PWM1->LER = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
-
-    return;
-}
 
 
 
@@ -335,7 +315,23 @@ void servo_write(uint8_t servo_number, float value)
 
 */
 void confEINT(void){
-    
+    // Configuracion de LED RGB para indicar el modo. P0.7, P0.8 y P0.9
+    PINSEL_CFG_Type LED_pins_config;
+    LED_pins_config.Portnum = 0;
+    LED_pins_config.Pinnum = 7;
+    LED_pins_config.Funcnum = 0;
+    LED_pins_config.Pinmode = PINSEL_PINMODE_TRISTATE;
+    LED_pins_config.OpenDrain = PINSEL_PINMODE_NORMAL;
+    PINSEL_ConfigPin(&LED_pins_config);
+    LED_pins_config.Pinnum = 8;
+    PINSEL_ConfigPin(&LED_pins_config);
+    LED_pins_config.Pinnum = 9;
+    PINSEL_ConfigPin(&LED_pins_config);
+
+    // Inicia en modo manual -> LED rojo
+    LPC_GPIO0->FIOSET |= (1 << 7);
+    LPC_GPIO0->FIOCLR |= (1 << 8) | (1 << 9);
+
     // Pin configuration EINT0 -> P2.10 y EINT1 -> P2.11
     PINSEL_CFG_Type PinCfg;
     PinCfg.Portnum = 2;
@@ -380,11 +376,19 @@ void EINT0_IRQHandler(void){
         homeState(); // Vuelvo al home state del robot para ejecutar un movimiento preseleccionado 
         NVIC_DisableIRQ(ADC_IRQn);
         NVIC_EnableIRQ(EINT1_IRQn);
+
+        // LED en verde para indicar que esta en modo automatico
+        LPC_GPIO0->FIOSET |= (1 << 8);
+        LPC_GPIO0->FIOCLR |= (1 << 7) | (1 << 9);
     }
     else{
         modo = 0;
         NVIC_EnableIRQ(ADC_IRQn);
         NVIC_DisableIRQ(EINT1_IRQn);
+
+        // LED en rojo para indicar que esta en modo manual
+        LPC_GPIO0->FIOSET |= (1 << 7);
+        LPC_GPIO0->FIOCLR |= (1 << 8) | (1 << 9);
     }
     
 
@@ -395,6 +399,15 @@ void EINT1_IRQHandler(void){
     // En este Handler tiene que ejecutar un movimiento preseleccionado y mandar 
     // por DMA al DAC una señal de audio durante el tiempo que dure el movimiento.
     
+    // LED en azul para indicar que esta en modo automatico y ejecutando un movimiento
+    LPC_GPIO0->FIOSET |= (1 << 9);
+    LPC_GPIO0->FIOCLR |= (1 << 7) | (1 << 8);
+
+    // Configuracion de time out 1 (4kHz) para DAC
+    uint32_t tmp;
+    tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ_1*NUM_SINE_SAMPLE);
+    DAC_SetDMATimeOut(LPC_DAC,tmp);
+
     // Enable GPDMA CH0
     GPDMA_ChannelCmd(0,ENABLE); 
 
@@ -421,6 +434,11 @@ void EINT1_IRQHandler(void){
     updatePWM();
     delay();
 
+    // Congiracion de time out 2 (5kHz) para DAC
+    uint32_t tmp;
+    tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ_2*NUM_SINE_SAMPLE);
+    DAC_SetDMATimeOut(LPC_DAC,tmp);
+
     // Movimiento para levantar el objeto y llevarlo a la posicion deseada
     LPC_PWM1 -> MR1 = 1850;
     updatePWM();
@@ -443,6 +461,9 @@ void EINT1_IRQHandler(void){
 
     // Vuelta al home state
     homeState();
+    // LED en verde para indicar que esta en modo automatico y finalizo el movimiento
+    LPC_GPIO0->FIOSET |= (1 << 8);
+    LPC_GPIO0->FIOCLR |= (1 << 7) | (1 << 9);
 
     // Deshabilito GPDMA CH0
     GPDMA_ChannelCmd(0,DISABLE);
@@ -561,7 +582,7 @@ void confDac(void){
     */
 
     uint32_t tmp;
-	tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ*NUM_SINE_SAMPLE); 
+	tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ_1*NUM_SINE_SAMPLE); 
 	
     /*
         first function: Set reload value for interrupt/DMA counter
