@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <string.h>
 
-<<<<<<< HEAD
 #define dmaSize 60
 #define numSineSample 60
 #define sineFreqHz 4000
@@ -20,33 +19,6 @@ GPDMA_Channel_CFG_Type dmaConfig;
 GPDMA_LLI_Type DMA_LLI_Struct;
 
 uint8_t alertMessage1[] = "Pinza cerrada, trabajar con precaucion!";
-=======
-/*
- *     	ADC: medimos 6 potenciometros y un sensor de distancia
- *       DAC: señal de audio variable en frecuencia
- *      DMA: transferencia de datos M2P a DAC de la señal de audio
- *       Timers: interrupción para largar conversión ADC
- *       PWM: servomotores (5)
- *       Hw de comunicación: UART
- */
-
-/*
- * 1. ADC: tendremos que configurar AD0 a AD5 como entrada analogica (Quedara inhabilitado el uso del PIN AOUT - AD3)
- * 			    - tendremos que utilizar un rate que permita realizar la conversion (200 kHZ no funciona)
- * 			    - mediante el timer extraeremos la muestra
- */
-
-/*
-  *  EINT0 - controlamos modos
-  *  Modo 0 controlado manualmente
-  *  Modo 1 mediante EINT1 ejecuta el movimiento y por DMA manda al DAC una señal de audio por 10 seg
-  *  Configuracion de LED RGB para indicar el modo. P0.7, P0.8 y P0.9
-  *           - R -> Modo 0
-  *           - G -> Modo 1
-  *           - B -> Modo 1 en ejecucion
-*/
-
->>>>>>> 3c08ba542243e189e2333714dc197ab58e346b74
 
 void configPin(void);
 void configPWM(void);
@@ -56,7 +28,6 @@ void configDMA(void);
 void confEINT(void);
 void confIntGpio(void);
 void configUART(void);
-<<<<<<< HEAD
 uint8_t servoMapDegrees(uint32_t);
 void createSineSignal(void);
 
@@ -64,16 +35,6 @@ void createSineSignal(void);
 #define NUM_SINE_SAMPLE 60
 #define SINE_FREQ_IN_HZ 4000
 #define PCLK_DAC_IN_MHZ 25 // CCLK divided by 4
-=======
-void homeState(void);
->>>>>>> 3c08ba542243e189e2333714dc197ab58e346b74
-
-void confEINT(void);
-void updatePWM(void);
-void delay(void);
-void confDMA(void);
-void confDac(void);
-void confSignal(void);
 
 // Variables globales para ver las conversiones de ADC
 uint32_t AD0Value = 0;
@@ -115,24 +76,10 @@ uint32_t AD6Array[30] = {262, 262, 262, 262, 262, 262, 262, 262, 262, 262, 262, 
 uint8_t cont6 = 0;
 
 
-<<<<<<< HEAD
 void confDMA(void);
 void confDac(void);
 GPDMA_Channel_CFG_Type GPDMACfg;
 uint32_t dac_sine_lut[NUM_SINE_SAMPLE];
-=======
-// Values for DMA
-#define DMA_SIZE 60
-#define NUM_SINE_SAMPLE 60
-#define PCLK_DAC_IN_MHZ 25 // PCLK_DAC = 25 MHz by default
-#define SINE_FREQ_IN_HZ_1 4000 // 4 kHz
-#define SINE_FREQ_IN_HZ_2 5000 // 5 kHz
-
-
-// Variables for EINT 
-uint8_t modo = 0; // 0 -> manual, 1 -> automatico
-
->>>>>>> 3c08ba542243e189e2333714dc197ab58e346b74
 
 int main(void)
 {
@@ -340,12 +287,6 @@ void configADC(void)
 
     // ADC interrupt configuration
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
-    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
-    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
-    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
-    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
-    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
-    ADC_IntConfig(LPC_ADC, ADC_ADINTEN0, ENABLE);
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN1, ENABLE);
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN2, ENABLE);
     ADC_IntConfig(LPC_ADC, ADC_ADINTEN4, ENABLE);
@@ -506,343 +447,8 @@ void ADC_IRQHandler(void)
     return;
 }
 
-<<<<<<< HEAD
 uint8_t servoMapDegrees(uint32_t valor_MR)
 {
     uint8_t degree = (valor_MR / 7) - 115;
     return degree;
 }
-=======
-
-
-
-
-// COnfiguracion de EINT0 y EINT1.
-/*
-    1. Configurar pines. (ACORDARSE que son normalmenta abierto los pulsadores. Flanco de bajada detecta pulsacion. Los pulsadores estan conectados a tierra)
-    2. Configurar interrupciones. (EINT0 y EINT1)
-    3. Iniciar EINT0. EINT1 solo para modo automatico. (Control mediante handler)
-
-*/
-void confEINT(void){
-    // Configuracion de LED RGB para indicar el modo. P0.7, P0.8 y P0.9
-    PINSEL_CFG_Type LED_pins_config;
-    LED_pins_config.Portnum = 0;
-    LED_pins_config.Pinnum = 7;
-    LED_pins_config.Funcnum = 0;
-    LED_pins_config.Pinmode = PINSEL_PINMODE_TRISTATE;
-    LED_pins_config.OpenDrain = PINSEL_PINMODE_NORMAL;
-    PINSEL_ConfigPin(&LED_pins_config);
-    LED_pins_config.Pinnum = 8;
-    PINSEL_ConfigPin(&LED_pins_config);
-    LED_pins_config.Pinnum = 9;
-    PINSEL_ConfigPin(&LED_pins_config);
-
-    // Inicia en modo manual -> LED rojo
-    LPC_GPIO0->FIOSET |= (1 << 7);
-    LPC_GPIO0->FIOCLR |= (1 << 8) | (1 << 9);
-
-    // Pin configuration EINT0 -> P2.10 y EINT1 -> P2.11
-    PINSEL_CFG_Type PinCfg;
-    PinCfg.Portnum = 2;
-    PinCfg.Pinnum = 10;
-    PinCfg.Funcnum = 1;
-    PinCfg.Pinmode = PINSEL_PINMODE_PULLUP;
-    PinCfg.OpenDrain = PINSEL_PINMODE_NORMAL;
-    PINSEL_ConfigPin(&PinCfg);
-
-    PinCfg.Pinnum = 11;
-    PINSEL_ConfigPin(&PinCfg);
-    
-    // For EINT0
-    EXTI_Init();
-    EXTI_SetMode(EXTI_EINT0,EXTI_MODE_EDGE_SENSITIVE);
-    EXTI_SetPolarity(EXTI_EINT0,EXTI_POLARITY_LOW_ACTIVE_OR_FALLING_EDGE);
-    EXTI_ClearEXTIFlag(EXTI_EINT0);
-
-    // For EINT1
-    EXTI_SetMode(EXTI_EINT1,EXTI_MODE_EDGE_SENSITIVE);
-    EXTI_SetPolarity(EXTI_EINT1,EXTI_POLARITY_LOW_ACTIVE_OR_FALLING_EDGE);
-    EXTI_ClearEXTIFlag(EXTI_EINT1);
-    
-    // Configuraciones iniciales
-    modo = 0; // Modo manual
-    NVIC_EnableIRQ(EINT0_IRQn);
-
-    return;
-}
-
-
-
-void EINT0_IRQHandler(void){
-
-    // En este codigo tengo que configurar el EINT0 para que cuando se presione el boton de la placa, se cambie el modo de funcionamiento del robot 
-    // de manual a automatico y viceversa. Con una variable global puedo saber en que modo esta el robot, si esta en cero es manual, si esta en uno es automatico.
-    // Modo manual: se mueve el robot con los potenciometros y el ADC esta activo. DMA e EINT1 desactivados.
-    // Modo automatico: se mueve el robot con la activacion de EINT1 y el DMA esta activo. 
-
-    if(modo == 0){
-        modo = 1;
-        homeState(); // Vuelvo al home state del robot para ejecutar un movimiento preseleccionado 
-        NVIC_DisableIRQ(ADC_IRQn);
-        NVIC_EnableIRQ(EINT1_IRQn);
-
-        // LED en verde para indicar que esta en modo automatico
-        LPC_GPIO0->FIOSET |= (1 << 8);
-        LPC_GPIO0->FIOCLR |= (1 << 7) | (1 << 9);
-    }
-    else{
-        modo = 0;
-        NVIC_EnableIRQ(ADC_IRQn);
-        NVIC_DisableIRQ(EINT1_IRQn);
-
-        // LED en rojo para indicar que esta en modo manual
-        LPC_GPIO0->FIOSET |= (1 << 7);
-        LPC_GPIO0->FIOCLR |= (1 << 8) | (1 << 9);
-    }
-    
-
-    return;
-}
-
-void EINT1_IRQHandler(void){
-    // En este Handler tiene que ejecutar un movimiento preseleccionado y mandar 
-    // por DMA al DAC una señal de audio durante el tiempo que dure el movimiento.
-    
-    // LED en azul para indicar que esta en modo automatico y ejecutando un movimiento
-    LPC_GPIO0->FIOSET |= (1 << 9);
-    LPC_GPIO0->FIOCLR |= (1 << 7) | (1 << 8);
-
-    // Configuracion de time out 1 (4kHz) para DAC
-    uint32_t tmp;
-    tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ_1*NUM_SINE_SAMPLE);
-    DAC_SetDMATimeOut(LPC_DAC,tmp);
-
-    // Enable GPDMA CH0
-    GPDMA_ChannelCmd(0,ENABLE); 
-
-    // Home State del Robot
-    homeState();
-
-    // Movimiento para agarrar el objeto
-    LPC_PWM1 -> MR1 = 1850;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR2 = 1850;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR3 = 2500;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR4 = 1600;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR5 = 1220;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR6 = 1800;
-    updatePWM();
-    delay();
-
-    // Congiracion de time out 2 (5kHz) para DAC
-    uint32_t tmp;
-    tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ_2*NUM_SINE_SAMPLE);
-    DAC_SetDMATimeOut(LPC_DAC,tmp);
-
-    // Movimiento para levantar el objeto y llevarlo a la posicion deseada
-    LPC_PWM1 -> MR1 = 1850;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR2 = 1850;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR3 = 2500;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR4 = 1600;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR5 = 1220;
-    updatePWM();
-    delay();
-    LPC_PWM1 -> MR6 = 1800;
-    updatePWM();
-    delay();
-
-    // Vuelta al home state
-    homeState();
-    // LED en verde para indicar que esta en modo automatico y finalizo el movimiento
-    LPC_GPIO0->FIOSET |= (1 << 8);
-    LPC_GPIO0->FIOCLR |= (1 << 7) | (1 << 9);
-
-    // Deshabilito GPDMA CH0
-    GPDMA_ChannelCmd(0,DISABLE);
-    return;
-}
-
-
-// Function that updates the new value for MRx registers
-void updatePWM(void){
-    LPC_PWM1->LER = (1 << 1) | (1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
-    return;
-}
-
-// Delay que dura 1 segundo aproximadamente. Llamo la funcion por cada movimiento 
-// automatico que haga el robot
-void delay(void){
-    for(int i=0;i<1000000;i++);
-    return;
-}
-
-/*
-    1. confSignal: armado de la señal senoidal
-    2. confDac: configuracion de pin AOUT e inicializacion de DAC
-    3. confDMA: configuracion de DMA
-    4. habilitar interrupcion de DMA, channel 0
-*/
-
-// Codigo que lee una parte de memoria y la manda por DMA al DAC para reproducir una señal de audio
-void confDMA(void){
-    
-    // Lista de DMA
-	GPDMA_LLI_Type DMA_LLI_Struct; 
-
-    /*
-        dac_sine_lut ubicacion de datos
-        destination DACR
-        next LLI is the same
-    */
-	DMA_LLI_Struct.SrcAddr= (uint32_t)dac_sine_lut;  
-	DMA_LLI_Struct.DstAddr= (uint32_t)&(LPC_DAC->DACR); 
-	DMA_LLI_Struct.NextLLI= (uint32_t)&DMA_LLI_Struct;
-
-	// Control register
-    /*
-        Souce width 32 bit
-        destination width 32 bit
-        source increment (1 word)
-    */
-	DMA_LLI_Struct.Control= DMA_SIZE
-			| (2<<18) 
-			| (2<<21) 
-			| (1<<26) 
-			;
-	
-    // GPDMA block section
-    GPDMA_Init(); // Inicialize GPDMA controller
-
-    /*
-        channel 0
-        source memory: dac_sine_lut
-        destination memory: unused because it is a M2P transfer
-        transfer size: DMA_SIZE (60 samples)    
-        transfer type: M2P (memory to peripheral)
-        source connection: unused because it is a M2P transfer
-        destination connection: DAC
-        linker list item: DMA_LLI_Struct
-    */
-
-    GPDMA_Channel_CFG_Type GPDMACfg;
-	GPDMACfg.ChannelNum = 0;
-	GPDMACfg.SrcMemAddr = (uint32_t)(dac_sine_lut);
-	GPDMACfg.DstMemAddr = 0;
-	GPDMACfg.TransferSize = DMA_SIZE;
-	GPDMACfg.TransferWidth = 0;
-	GPDMACfg.TransferType = GPDMA_TRANSFERTYPE_M2P;
-	GPDMACfg.SrcConn = 0;
-	GPDMACfg.DstConn = GPDMA_CONN_DAC;
-	GPDMACfg.DMALLI = (uint32_t)&DMA_LLI_Struct;
-	// Setup channel with given parameter
-	GPDMA_Setup(&GPDMACfg);
-	return;
-
-}
-
-//Configuracion de pin AOUT e inicializacion de DAC
-void confDac(void){
-
-    // P0.26 as AOUT
-	PINSEL_CFG_Type PinCfg;
-	PinCfg.Funcnum = 2;
-	PinCfg.OpenDrain = 0;
-	PinCfg.Pinmode = 0;
-	PinCfg.Pinnum = 26;
-	PinCfg.Portnum = 0;
-	PINSEL_ConfigPin(&PinCfg);
-
-
-    // DAC configuration structure
-    /*
-        enable counter
-        enable DMA
-    */
-	DAC_CONVERTER_CFG_Type DAC_ConverterConfigStruct;
-	DAC_ConverterConfigStruct.CNT_ENA =SET; 
-	DAC_ConverterConfigStruct.DMA_ENA = SET; 
-
-    // Initialize DAC. Sampling frequency = 1MHz (1uS)
-    DAC_Init(LPC_DAC); 
-
-    // Set time out for DAC
-    /*
-        PCLK_DAC_IN_MHZ = 25
-        SINE_FREQ_IN_HZ = 50
-        NUM_SINE_SAMPLE = 60
-        tmp = 25*1000000/(50*60) = 8333 is the value that is loaded into the DMA timer. In seconds, 8333*1e-6 = 0.008333 = 8.333 ms
-    */
-
-    uint32_t tmp;
-	tmp = (PCLK_DAC_IN_MHZ*1000000)/(SINE_FREQ_IN_HZ_1*NUM_SINE_SAMPLE); 
-	
-    /*
-        first function: Set reload value for interrupt/DMA counter
-        second function: To enable the DMA operation and control DMA timer
-    */
-    DAC_SetDMATimeOut(LPC_DAC,tmp); 
-	DAC_ConfigDAConverterControl(LPC_DAC, &DAC_ConverterConfigStruct); 
-
-	
-    return;
-}
-
-// Armado de la señal senoidal 
-void confSignal(void){
-    uint32_t dac_sine_lut[NUM_SINE_SAMPLE];
-
-    // quarter wave values ​​where zero volts are 0 and 3.3 V is 1023. Start in 512 to 1023
-	uint32_t sin_0_to_90_16_samples[16]={\
-			0,1045,2079,3090,4067,\
-			5000,5877,6691,7431,8090,\
-			8660,9135,9510,9781,9945,10000\
-    };
-
-    // Armado de la LUT
-    /*
-        i = 0 to 15: first quarter of the sine wave
-        i = 16 to 30: second quarter of the sine wave
-        i = 31 to 45: third quarter of the sine wave
-        i = 46 to 60: fourth quarter of the sine wave
-    */
-    for(i=0;i<NUM_SINE_SAMPLE;i++)
-	{
-		if(i<=15){
-			dac_sine_lut[i] = 512 + 512*sin_0_to_90_16_samples[i]/10000;
-			if(i==15) dac_sine_lut[i]= 1023;
-		}
-		else if(i<=30){
-			dac_sine_lut[i] = 512 + 512*sin_0_to_90_16_samples[30-i]/10000;
-		}
-		else if(i<=45){
-			dac_sine_lut[i] = 512 - 512*sin_0_to_90_16_samples[i-30]/10000;
-		}
-		else{
-			dac_sine_lut[i] = 512 - 512*sin_0_to_90_16_samples[60-i]/10000;
-		}
-
-		// rotate 6 bits to the left to match the DAC format
-		dac_sine_lut[i] = (dac_sine_lut[i]<<6);
-	}
-
-    return;
-}
->>>>>>> 3c08ba542243e189e2333714dc197ab58e346b74
