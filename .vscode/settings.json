@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "testbuzzer": "c",
+        "iostream": "cpp"
+    }
+}
